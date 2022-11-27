@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>React App</title>
+
+  <script src="https://www.desmos.com/api/v1.7/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script>
+</head>
+
+<body>
+  <div id="root"></div>
+
+  <div style="display: flex;">
+    <div id="calculator" style="width: 95vw; height: 99vh; margin:0;padding:0;"></div>
+    <div style="display: flex; flex-direction: column; width:200px; padding:20px;">
+      <div>
+        <text style=" font-family: Arial;  margin-bottom: 10px; text-align: center;">Desired fps</text>
+        <input id="bake-fps-input" style="font-family: Arial; margin-bottom: 50px; width:30px">
+      </div>
+      <button id="bake-sync-button" style="font-family: Arial; margin-bottom: 0px; text-align: center;">Bake
+        Sync</button>
+      <button id="bake-async-button" style="font-family: Arial; margin-bottom: 30px; text-align: center;">Bake
+        Async</button>
+
+      <text style=" margin-bottom: 10px; text-align: center; font-family: Arial;">Log</text>
+      <text id="message"
+        style=" font-family: Arial; min-height: 20px; font-size:small; margin-bottom: 10px; text-align: center; border-style: solid;"></text>
+      <a style="position:absolute; bottom: 20px; text-align: 'center'; margin: auto 0;"
+        href="mailto: cmq5bp@virginia.edu">cmq5bp</a>
+    </div>
+  </div>
+
+  <script>
+    let elt = document.getElementById('calculator');
+    let calculator = Desmos.GraphingCalculator(elt);
+
+    let BakeSyncButton = document.getElementById("bake-sync-button")
+    let BakeAsyncButton = document.getElementById("bake-async-button")
+    let BakeFPSInput = document.getElementById("bake-fps-input")
+    let MessageText = document.getElementById("message")
+
+    const log = mesg => MessageText.innerHTML = mesg;
+
+    const GetExpr = () => {
+      let ex = calculator.getExpressions().find(ex => ex.latex.includes('t='))
+
+      if (ex === undefined) {
+        alert('t is not defined')
+        return { valid: false };
+      }
+
+      if (!('sliderBounds' in ex)) {
+        alert('did not define slider bounds & step size of t')
+        return { valid: false };
+      }
+
+      const id = ex.id;
+      let { min, max, step } = ex.sliderBounds;
+      min = +min;
+      max = +max;
+      step = +step;
+
+      if (step == 0 || isNaN(step)) {
+        alert('invalid step')
+        return { valid: false };
+      }
+
+      let fps = +BakeFPSInput.value
+      if (fps == 0 || isNaN(fps)) fps = 1 / step;
+
+      return { id, min, max, step, fps, valid: true }
+    }
+
+
+
+    BakeSyncButton.onclick = async () => {
+      const { id, min, max, step, fps, valid } = GetExpr()
+      if (!valid) return;
+
+
+      let pngURIs = [];
+      for (let t = min, i = 0; t <= max; i++, t += step) {
+        log(`Capturing screenshots [${i}/${Math.ceil((max - min) / step)}]`)
+        calculator.setExpression({ id, latex: `t=${t}` });
+        pngURIs.push(await (new Promise((res, rej) => calculator.asyncScreenshot({
+          width: 1920,
+          height: 1080,
+        }, d => res(d)))));
+      }
+
+      backend.saveMP4Sync(pngURIs, fps, log)
+    };
+
+    BakeAsyncButton.onclick = async () => {
+      const { id, min, max, step, fps, valid } = GetExpr()
+      if (!valid) return;
+
+      log(`Capturing screenshots [${Math.ceil((max - min) / step)}]`)
+
+      let promises = [];
+      for (let t = min; t <= max; t += step) {
+        calculator.setExpression({ id, latex: `t=${t}` });
+        promises.push(new Promise((res, rej) => calculator.asyncScreenshot({
+          width: 1920,
+          height: 1080,
+        }, d => res(d))));
+      }
+
+      let data = await Promise.all(promises);
+
+      backend.saveMP4Async(data, fps, log)
+    };
+  </script>
+
+</body>
+
+</html>
